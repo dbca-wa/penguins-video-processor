@@ -27,6 +27,51 @@ azure_logger = logging.getLogger('azure')
 azure_logger.setLevel(logging.ERROR)
 
 
+def get_unprocessed_videos(dirname='unprocessed'):
+    """Check the contents of the ./storage/unprocessed directory and return a list
+    source video file paths.
+    """
+    # Assume video storage is mounted at ./storage
+    cwd = pathlib.Path().resolve()
+    unprocessed_path = os.path.join(cwd, 'storage', dirname)
+    unprocessed_videos = os.listdir(unprocessed_path)
+    LOGGER.info('Checking for unprocessed videos')
+    source_paths = []
+
+    for filename in unprocessed_videos:
+        name, ext = os.path.splitext(filename)
+        # Accepted source video file formats.
+        if ext not in ['.mkv', '.mp4', '.m4v', '.mov', '.mpg', '.avi', '.wmv']:
+            continue
+        output = f'{name}.mp4'  # Output container format is MP4, optimised for HTTP streaming.
+        source_paths.append(os.path.join(unprocessed_path, filename))
+
+    return source_paths
+
+
+def transcode_video(source_path, preset=None, dirname='processed'):
+    """Transcode a single video at the source_path, then move it to
+    the processed directory at `dirname`.
+    """
+    name, ext = os.path.splitext(filename)
+    # Accepted source video file formats.
+    if ext not in ['.mkv', '.mp4', '.m4v', '.mov', '.mpg', '.avi', '.wmv']:
+        return
+    output = f'{name}.mp4'  # Output container format is MP4, optimised for HTTP streaming.
+    source = os.path.join(unprocessed_path, filename)
+    dest = os.path.join(encoded_path, output)
+    processed = os.path.join(processed_path, filename)
+
+    try:
+        hb_cmd = f'HandBrakeCLI --preset "{preset}" --optimize --input {source} --output {dest}'
+        subprocess.run(hb_cmd, shell=True, stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError:
+        LOGGER.exception(f'HandBrake encode failed for {source}')
+
+    LOGGER.info('Moving encoded video to the processed directory')
+    shutil.move(source, processed)
+
+
 def transcode_videos(preset=None):
     """Check the content of the ./storage/unprocessed directory, transcode any videos present,
     then move each video to the ./storage./processed directory.
