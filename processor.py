@@ -68,9 +68,9 @@ def transcode_videos(preset=None):
         shutil.move(source, processed)
 
 
-def upload_transcoded(container_name='beach-return-cams', blob_prefix='beach_return_cams_2'):
+def upload_transcoded(container_name='beach-return-cams', blob_prefix='beach_return_cams_2', overwrite_existing=True):
     """Check the content of the ./storage/encoded directory, check the Azure blob storage destination,
-    then upload any local videos not present in the destination.
+    then upload any local videos (by default, overwriting any files already in blob storage).
     On successful upload, delete the local encoded video (assumed to have been archived elsewhere).
     """
     connect_str = os.getenv('AZURE_CONNECTION_STRING')
@@ -93,7 +93,7 @@ def upload_transcoded(container_name='beach-return-cams', blob_prefix='beach_ret
         remote_filenames.append(b.split('/')[-1])
 
     for video in encoded_videos:
-        if video not in remote_filenames:
+        if overwrite_existing or video not in remote_filenames:
             filepath = os.path.join(encoded_path, video)
             name = f'{blob_prefix}/{video}'
 
@@ -102,7 +102,7 @@ def upload_transcoded(container_name='beach-return-cams', blob_prefix='beach_ret
             with open(file=filepath, mode='rb') as data:
                 blob_client.upload_blob(data)
 
-    # Repeat the listing of remote encoded videos before removing any local files.
+    # Repeat the listing of remote encoded videos before removing any local encoded files.
     blob_list = container_client.list_blobs(name_starts_with=blob_prefix)
     LOGGER.info('Checking if local videos can be removed')
     remote_blobs = [blob.name for blob in blob_list]
