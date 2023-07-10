@@ -27,54 +27,48 @@ azure_logger = logging.getLogger('azure')
 azure_logger.setLevel(logging.ERROR)
 
 
-def get_unprocessed_videos(dirname='unprocessed'):
-    """Check the contents of the ./storage/unprocessed directory and return a list
-    source video file paths.
-    """
-    # Assume video storage is mounted at ./storage
-    cwd = pathlib.Path().resolve()
-    unprocessed_path = os.path.join(cwd, 'storage', dirname)
-    unprocessed_videos = os.listdir(unprocessed_path)
-    LOGGER.info('Checking for unprocessed videos')
-    source_paths = []
-
-    for filename in unprocessed_videos:
-        name, ext = os.path.splitext(filename)
-        # Accepted source video file formats.
-        if ext not in ['.mkv', '.mp4', '.m4v', '.mov', '.mpg', '.avi', '.wmv']:
-            continue
-        output = f'{name}.mp4'  # Output container format is MP4, optimised for HTTP streaming.
-        source_paths.append(os.path.join(unprocessed_path, filename))
-
-    return source_paths
-
-
-def transcode_video(source_path, preset=None, dirname='processed'):
+def encode_video(source_path, encoded_path, preset):
     """Transcode a single video at the source_path, then move it to
-    the processed directory at `dirname`.
+    the `processed` directory. If processed_path is not supplied, infer it.
     """
-    name, ext = os.path.splitext(filename)
-    # Accepted source video file formats.
-    if ext not in ['.mkv', '.mp4', '.m4v', '.mov', '.mpg', '.avi', '.wmv']:
-        return
-    output = f'{name}.mp4'  # Output container format is MP4, optimised for HTTP streaming.
-    source = os.path.join(unprocessed_path, filename)
-    dest = os.path.join(encoded_path, output)
-    processed = os.path.join(processed_path, filename)
-
-    try:
-        hb_cmd = f'HandBrakeCLI --preset "{preset}" --optimize --input {source} --output {dest}'
-        subprocess.run(hb_cmd, shell=True, stderr=subprocess.STDOUT)
-    except subprocess.CalledProcessError:
-        LOGGER.exception(f'HandBrake encode failed for {source}')
-
-    LOGGER.info('Moving encoded video to the processed directory')
-    shutil.move(source, processed)
+    hb_cmd = f'HandBrakeCLI --preset "{preset}" --optimize --input {source_path} --output {encoded_path}'
+    subprocess.run(hb_cmd, shell=True, stderr=subprocess.STDOUT)
+    return
 
 
-def transcode_videos(preset=None):
+def get_remote_videos(container_name='beach-return-cams', blob_prefix='beach_return_cams_2'):
+    """Check Azure blob storage for the list of uploaded videos, returns a
+    list of filenames (minus any prefix).
+    """
+    connect_str = os.getenv('AZURE_CONNECTION_STRING')
+    blob_service_client = BlobServiceClient.from_connection_string(connect_str)
+    LOGGER.info('Checking existing uploaded videos')
+    container_client = blob_service_client.get_container_client(container=container_name)
+    blob_list = container_client.list_blobs(name_starts_with=blob_prefix)
+    remote_blobs = [blob.name for blob in blob_list]
+    remote_filenames = []
+    for b in remote_blobs:
+        remote_filenames.append(b.split('/')[-1])
+    return remote_filenames
+
+
+def upload_video(source_path, container_name='beach-return-cams', blob_prefix='beach_return_cams_2', overwrite=True):
+    """Upload a single video at `source_path` to Azure blob storage.
+    """
+    filename = os.path.basename(source_path)
+    connect_str = os.getenv('AZURE_CONNECTION_STRING')
+    blob_service_client = BlobServiceClient.from_connection_string(connect_str)
+    remote_name = f'{blob_prefix}/{filename}'
+    blob_client = blob_service_client.get_blob_client(container=container_name, blob=remote_name)
+    with open(file=source_path, mode='rb') as data:
+        blob_client.upload_blob(data, overwrite=overwrite)
+
+
+def transcode_videos(preset=None, overwrite=True, container_name='beach-return-cams', blob_prefix='beach_return_cams_2'):
     """Check the content of the ./storage/unprocessed directory, transcode any videos present,
     then move each video to the ./storage./processed directory.
+    Upload encoded videos to Azure blob storage.
+    On successful upload, delete the local encoded video (assumed to have been archived elsewhere).
     """
     if not preset:
         # Check if the encoding preset has been set via environment variable.
@@ -87,10 +81,10 @@ def transcode_videos(preset=None):
 
     # Assume video storage is mounted at ./storage
     cwd = pathlib.Path().resolve()
-    unprocessed_path = os.path.join(cwd, 'storage', 'unprocessed')
-    encoded_path = os.path.join(cwd, 'storage', 'encoded')
-    processed_path = os.path.join(cwd, 'storage', 'processed')
-    unprocessed_videos = os.listdir(unprocessed_path)
+    unprocessed_dir = os.path.join(cwd, 'storage', 'unprocessed')
+    encoded_dir = os.path.join(cwd, 'storage', 'encoded')
+    processed_dir = os.path.join(cwd, 'storage', 'processed')
+    unprocessed_videos = os.listdir(unprocessed_dir)
     LOGGER.info('Checking for unprocessed videos')
 
     for filename in unprocessed_videos:
@@ -99,71 +93,37 @@ def transcode_videos(preset=None):
         if ext not in ['.mkv', '.mp4', '.m4v', '.mov', '.mpg', '.avi', '.wmv']:
             continue
         output = f'{name}.mp4'  # Output container format is MP4, optimised for HTTP streaming.
-        source = os.path.join(unprocessed_path, filename)
-        dest = os.path.join(encoded_path, output)
-        processed = os.path.join(processed_path, filename)
+        source_path = os.path.join(unprocessed_dir, filename)
+        encoded_path = os.path.join(encoded_dir, output)
 
         try:
-            hb_cmd = f'HandBrakeCLI --preset "{preset}" --optimize --input {source} --output {dest}'
-            subprocess.run(hb_cmd, shell=True, stderr=subprocess.STDOUT)
+            encode_video(source_path, encoded_path, preset)
         except subprocess.CalledProcessError:
-            LOGGER.exception(f'HandBrake encode failed for {source}')
+            LOGGER.exception(f'HandBrake encode failed for {source_path}')
 
-        LOGGER.info('Moving encoded video to the processed directory')
-        shutil.move(source, processed)
+        LOGGER.info(f'Moving encoded video {filename} to the processed directory')
+        processed_path = os.path.join(processed_dir, filename)
+        shutil.move(source_path, processed_path)
 
+        if not overwrite:
+            LOGGER.info('Checking existing uploaded videos')
+            remote_filenames = get_remote_videos()
+            if output in remote_filenames:
+                LOGGER.info('Video already uploaded, skipping.')
+                continue
 
-def upload_transcoded(container_name='beach-return-cams', blob_prefix='beach_return_cams_2', overwrite_existing=True):
-    """Check the content of the ./storage/encoded directory, check the Azure blob storage destination,
-    then upload any local videos (by default, overwriting any files already in blob storage).
-    On successful upload, delete the local encoded video (assumed to have been archived elsewhere).
-    """
-    connect_str = os.getenv('AZURE_CONNECTION_STRING')
-    blob_service_client = BlobServiceClient.from_connection_string(connect_str)
-    container_client = blob_service_client.get_container_client(container=container_name)
-    blob_list = container_client.list_blobs(name_starts_with=blob_prefix)
+        LOGGER.info(f'Uploading encoded video {output} to Azure blob store')
+        upload_video(encoded_path, container_name, blob_prefix, overwrite)
 
-    cwd = pathlib.Path().resolve()
-    encoded_path = os.path.join(cwd, 'storage', 'encoded')
-    encoded_videos = os.listdir(encoded_path)
-
-    if not encoded_videos:
-        LOGGER.info('No encoded videos, exiting')
-        return  # Exit
-
-    LOGGER.info('Checking existing uploaded videos')
-    remote_blobs = [blob.name for blob in blob_list]
-    remote_filenames = []
-    for b in remote_blobs:
-        remote_filenames.append(b.split('/')[-1])
-
-    for video in encoded_videos:
-        if overwrite_existing or video not in remote_filenames:
-            filepath = os.path.join(encoded_path, video)
-            name = f'{blob_prefix}/{video}'
-
-            LOGGER.info(f'Uploading {name}')
-            blob_client = blob_service_client.get_blob_client(container=container_name, blob=name)
-            with open(file=filepath, mode='rb') as data:
-                blob_client.upload_blob(data)
-
-    # Repeat the listing of remote encoded videos before removing any local encoded files.
-    blob_list = container_client.list_blobs(name_starts_with=blob_prefix)
-    LOGGER.info('Checking if local videos can be removed')
-    remote_blobs = [blob.name for blob in blob_list]
-    remote_filenames = []
-    for b in remote_blobs:
-        remote_filenames.append(b.split('/')[-1])
-
-    for video in encoded_videos:
-        if video in remote_filenames:
-            filepath = os.path.join(encoded_path, video)
-            LOGGER.info(f'Deleting {filepath} (present in Azure)')
-            os.remove(filepath)
+        # Repeat the listing of remote encoded videos before removing any local encoded files.
+        LOGGER.info(f'Checking if encoded video {output} can be removed locally')
+        remote_filenames = get_remote_videos()
+        if output in remote_filenames:
+            LOGGER.info(f'Deleting {output} locally (present in Azure)')
+            os.remove(encoded_path)
 
     LOGGER.info('Completed')
 
 
 if __name__ == '__main__':
     transcode_videos()
-    upload_transcoded()

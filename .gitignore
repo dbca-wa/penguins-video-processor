@@ -1,3 +1,4 @@
 .python-version
 .env
 storage/
+__pycache__
