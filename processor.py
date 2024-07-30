@@ -1,7 +1,6 @@
 from azure.storage.blob import BlobServiceClient
 import logging
 import os
-import pathlib
 import shutil
 import subprocess
 import sys
@@ -64,27 +63,23 @@ def upload_video(source_path, container_name='beach-return-cams', blob_prefix='b
         blob_client.upload_blob(data, overwrite=overwrite)
 
 
-def transcode_videos(preset=None, overwrite=True, container_name='beach-return-cams', blob_prefix='beach_return_cams_2'):
-    """Check the content of the ./storage/unprocessed directory, transcode any videos present,
-    then move each video to the ./storage./processed directory.
-    Upload encoded videos to Azure blob storage.
-    On successful upload, delete the local encoded video (assumed to have been archived elsewhere).
+def transcode_videos(source_dir, encoded_dir, processed_dir='processed', preset=None, overwrite=False, container_name='beach-return-cams', blob_prefix='beach_return_cams_2'):
+    """Convenience function to check the content of the `source_dir` directory,
+    transcode any videos present using the HandBrake preset, then move each
+    transcoded video to the `encoded_dir` directory. Upload encoded videos to
+    Azure blob storage. On successful upload, delete the local encoded video
+    and move the original video to `processed_dir`.
     """
     if not preset:
         # Check if the encoding preset has been set via environment variable.
-        if os.getenv('VIDEO_PRESET'):
-            preset = os.getenv('VIDEO_PRESET')
+        if os.getenv('TRANSCODE_PRESET'):
+            preset = os.getenv('TRANSCODE_PRESET')
         else:
             # Fall back to a basic video encoding preset.
             preset = 'Very Fast 480p30'
     LOGGER.info(f'Using HandBrake video preset {preset}')
 
-    # Assume video storage is mounted at ./storage
-    cwd = pathlib.Path().resolve()
-    unprocessed_dir = os.path.join(cwd, 'storage', 'unprocessed')
-    encoded_dir = os.path.join(cwd, 'storage', 'encoded')
-    processed_dir = os.path.join(cwd, 'storage', 'processed')
-    unprocessed_videos = os.listdir(unprocessed_dir)
+    unprocessed_videos = os.listdir(source_dir)
     LOGGER.info('Checking for unprocessed videos')
 
     for filename in unprocessed_videos:
@@ -93,7 +88,7 @@ def transcode_videos(preset=None, overwrite=True, container_name='beach-return-c
         if ext not in ['.mkv', '.mp4', '.m4v', '.mov', '.mpg', '.avi', '.wmv']:
             continue
         output = f'{name}.mp4'  # Output container format is MP4, optimised for HTTP streaming.
-        source_path = os.path.join(unprocessed_dir, filename)
+        source_path = os.path.join(source_dir, filename)
         encoded_path = os.path.join(encoded_dir, output)
 
         try:
@@ -123,7 +118,3 @@ def transcode_videos(preset=None, overwrite=True, container_name='beach-return-c
             os.remove(encoded_path)
 
     LOGGER.info('Completed')
-
-
-if __name__ == '__main__':
-    transcode_videos()
