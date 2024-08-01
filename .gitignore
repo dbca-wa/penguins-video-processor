@@ -1,6 +1,7 @@
 __pycache__/
 .python-version
 .env
+.venv/
 storage/
 processed/
 __pycache__
