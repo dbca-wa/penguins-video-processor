@@ -49,7 +49,7 @@ def get_remote_videos(conn_str, container_name, name_starts_with=None):
     return remote_blobs
 
 
-def get_blob_client(conn_str, container_name, blob_name, max_put=16*1024*102, timeout=120):
+def get_blob_client(conn_str, container_name, blob_name, max_put=16*1024*1024, timeout=120):
     """
     Return a BlobClient class having defaults to account for a slower internet connection.
     The parent class defaults are 64MB and 20s.
