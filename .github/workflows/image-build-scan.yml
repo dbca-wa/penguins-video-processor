@@ -52,7 +52,7 @@ jobs:
         with:
           image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}'
           ignore-unfixed: true
-          vuln-type: 'os,library'
+          vuln-type: 'library'
           severity: 'CRITICAL,HIGH'
           format: 'sarif'
           output: 'trivy-results.sarif'

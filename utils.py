@@ -1,7 +1,8 @@
-from azure.storage.blob import BlobClient, ContainerClient
 import logging
 import os
 import sys
+
+from azure.storage.blob import BlobClient, ContainerClient
 
 
 def configure_logging(logfile=None, azure_logfile=None):
@@ -10,7 +11,7 @@ def configure_logging(logfile=None, azure_logfile=None):
     """
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
-    formatter = logging.Formatter('%(asctime)s | %(levelname)s | %(message)s')
+    formatter = logging.Formatter("{asctime} | {levelname} | {message}", style="{")
     handler = logging.StreamHandler(sys.stdout)
     handler.setLevel(logging.INFO)
     handler.setFormatter(formatter)
@@ -23,7 +24,7 @@ def configure_logging(logfile=None, azure_logfile=None):
 
     # Set the logging level for all azure-* libraries (the azure-storage-blob library uses this one).
     # Reference: https://learn.microsoft.com/en-us/azure/developer/python/sdk/azure-sdk-logging
-    azure_logger = logging.getLogger('azure')
+    azure_logger = logging.getLogger("azure")
     azure_logger.setLevel(logging.WARNING)
     if azure_logfile:
         file_handler = logging.FileHandler(azure_logfile)
@@ -44,12 +45,12 @@ def get_remote_videos(conn_str, container_name, name_starts_with=None):
         blob_list = container_client.list_blobs(name_starts_with)
     else:
         blob_list = container_client.list_blobs()
-    remote_blobs = [blob.name.split('/')[-1] for blob in blob_list]
+    remote_blobs = [blob.name.split("/")[-1] for blob in blob_list]
 
     return remote_blobs
 
 
-def get_blob_client(conn_str, container_name, blob_name, max_put=16*1024*102, timeout=120):
+def get_blob_client(conn_str, container_name, blob_name, max_put=16 * 1024 * 1024, timeout=120):
     """
     Return a BlobClient class having defaults to account for a slower internet connection.
     The parent class defaults are 64MB and 20s.
@@ -71,8 +72,8 @@ def upload_video(conn_str, container_name, source_path, blob_prefix=None, overwr
     """
     blob_name = os.path.basename(source_path)
     if blob_prefix:
-        blob_name = f'{blob_prefix}/{blob_name}'
+        blob_name = f"{blob_prefix}/{blob_name}"
     blob_client = get_blob_client(conn_str, container_name, blob_name)
 
-    with open(file=source_path, mode='rb') as data:
+    with open(file=source_path, mode="rb") as data:
         blob_client.upload_blob(data, overwrite=overwrite)
