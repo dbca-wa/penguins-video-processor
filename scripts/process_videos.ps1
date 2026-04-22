@@ -15,7 +15,7 @@ https://go.microsoft.com/fwlink/?LinkID=135170
 #>
 
 Write-Host "Activating local Python virtualenv"
-.venv\Scripts\activate.ps1
+.venv\Scripts\Activate.ps1
 Write-Host "Processing videos for upload to website"
 $source_dir = "D:\automated-exports"
 $transcoded_dir = "D:\automated-exports\transcoded"

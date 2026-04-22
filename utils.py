@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 
-from azure.storage.blob import BlobClient, ContainerClient
+from azure.storage.blob import BlobClient, ContainerClient, ContentSettings
 
 
 def configure_logging(logfile=None, azure_logfile=None):
@@ -77,3 +77,7 @@ def upload_video(conn_str, container_name, source_path, blob_prefix=None, overwr
 
     with open(file=source_path, mode="rb") as data:
         blob_client.upload_blob(data, overwrite=overwrite)
+
+    # Set the blob's HTTP headers.
+    blob_headers = ContentSettings(content_type="video/mp4", cache_control="public, max-age=86400")
+    blob_client.set_http_headers(blob_headers)
