@@ -7,7 +7,7 @@ license = { file = "LICENSE" }
 readme = { file = "README.md" }
 requires-python = ">=3.13,<4"
 dependencies = [
-  "azure-storage-blob==12.28.0",
+  "azure-storage-blob==12.29.0",
   "ipython>=9.14.0",
   "python-dotenv==1.2.2",
 ]
