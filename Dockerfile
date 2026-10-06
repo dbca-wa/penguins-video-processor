@@ -7,7 +7,7 @@ RUN apt-get update -y \
   && rm -rf /var/lib/apt/lists/*
 
 # Copy and configure uv, to install dependencies
-COPY --from=ghcr.io/astral-sh/uv:0.11 /uv /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12 /uv /bin/
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --link-mode=copy --compile-bytecode --no-python-downloads --frozen
